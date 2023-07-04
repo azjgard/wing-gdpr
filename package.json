@@ -1,0 +1,16 @@
+{
+  "name": "hello-wing",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@winglang/sdk": "^0.23.17",
+    "ts-node": "^10.9.1"
+  }
+}
