@@ -6,7 +6,7 @@ bring cloud;
 let api = new cloud.Api();
 let counter = new cloud.Counter();
 
-let docBucket = new cloud.Bucket();
+let docBucket = new cloud.Bucket() as "gdpr_docs";
 
 let emailTable = new cloud.Table(
   name: "emails",
@@ -18,14 +18,16 @@ let emailTable = new cloud.Table(
 );
 
 api.post("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
-  // TODO: 
-  // - get document from request
-  // - store the document in docBucket
-  // - handle emails (store in table, replace with id, create /modified, delete /origin)
-  return cloud.ApiResponse {
-    status: 200,
-    body: Json.stringify({})
-  };
+  // TODO: handle emails (store in table [if emails], replace with id, create /modified, delete /origin)
+  if let body = request.body {
+    let docData = Json.parse(body);
+    let docId = request.vars.get("id");
+    docBucket.put("origin/${docId}.txt", body);
+    return cloud.ApiResponse {
+      status: 201,
+      body: docId
+    };
+  }
 });
 
 api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
