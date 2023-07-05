@@ -4,15 +4,13 @@ bring cloud;
 // Nearly all of this is a stub
 
 let api = new cloud.Api();
-let counter = new cloud.Counter();
-
 let docBucket = new cloud.Bucket() as "gdpr_docs";
-
-let docEmailsTable = new cloud.Table(
-  name: "doc_emails",
+let emailIdGenerator = new cloud.Counter();
+let emailsTable = new cloud.Table(
+  name: "email",
   primaryKey: "id", // corresponds to the id of a document
   columns: {
-    "email_data" => cloud.ColumnType.JSON
+    "emailId" => cloud.ColumnType.NUMBER
   }
 );
 
@@ -28,8 +26,15 @@ let getModifiedKey = inflight (key: str): str => {
 };
 
 inflight class FileParseService {
-  extern "./lib.js" static inflight extractEmails(file: str): void;
+  extern "./lib.js" static inflight extractEmails(file: str): Array<str>;
 } 
+
+test "FileParseService -> extractEmails" {
+  let result = FileParseService.extractEmails("This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org");
+  let expected = ["gard.jordin@gmail.com","abc@def.org"];
+  assert(result.at(0) == expected.at(0));
+  assert(result.at(1) == expected.at(1));
+}
 
 /**
   Allow users to upload files, which are put into an S3 bucket
@@ -63,12 +68,26 @@ api.post("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse =>
 */
 docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
   if !key.startsWith(KEY_ORIGINAL) {
-    log("Early return because key is not prefixed with '${KEY_ORIGINAL}'");
+    log("Ending because key is not prefixed with '${KEY_ORIGINAL}'");
     return;
   }
 
   let fileStr = docBucket.get(key);
-  // TODO: utilize js extern 
+  let emails = FileParseService.extractEmails(fileStr);
+  if emails.length == 0 {
+    log("Ended because no emails were found");
+    return;
+  }
+
+  let emailIdMap = MutMap<num>{};
+  for e in emails {
+    let emailId = emailIdGenerator.inc();
+    emailsTable.insert(e, Json { emailId: emailId });
+    emailIdMap.set(e, emailId);
+  }
+
+  // TODO: pass emails back to another js extern function to replace within the document
+  // TODO: upload the replaced document and delete the original
 });
 
 api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
