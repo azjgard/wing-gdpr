@@ -25,15 +25,39 @@ let getModifiedKey = inflight (key: str): str => {
   return "${KEY_MODIFIED}${key}.txt";
 };
 
+let getModifiedKeyFromOriginalKey = inflight (key: str): str => {
+  let rawKey = key.split("/").at(1);
+  return getModifiedKey(rawKey);
+};
+
+struct ParsedEmail {
+  email: str;
+  emailId: num;
+}
+
+
 inflight class FileParseService {
-  extern "./lib.js" static inflight extractEmails(file: str): Array<str>;
+  extern "./js/lib.js" static inflight extractEmails(file: str): Array<str>;
+  extern "./js/lib.js" static inflight getCompliantDoc(file: str, emailToIdMap: Map<num>): str;
 } 
 
 test "FileParseService -> extractEmails" {
-  let result = FileParseService.extractEmails("This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org");
+  let result = FileParseService.extractEmails("This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org.");
   let expected = ["gard.jordin@gmail.com","abc@def.org"];
   assert(result.at(0) == expected.at(0));
   assert(result.at(1) == expected.at(1));
+}
+
+test "FileParseService -> replaceDocEmails" {
+  let result = FileParseService.getCompliantDoc(
+    "This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org.", 
+    Map<num>{
+      "gard.jordin@gmail.com" => 1,
+      "abc@def.org" => 2
+    }
+  );
+
+  assert(result == "This is a string with an email: 1@gdpr. It actually has two: 2@gdpr.");
 }
 
 /**
@@ -68,14 +92,14 @@ api.post("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse =>
 */
 docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
   if !key.startsWith(KEY_ORIGINAL) {
-    log("Ending because key is not prefixed with '${KEY_ORIGINAL}'");
+    log("Ending because key is not an original");
     return;
   }
 
   let fileStr = docBucket.get(key);
   let emails = FileParseService.extractEmails(fileStr);
   if emails.length == 0 {
-    log("Ended because no emails were found");
+    log("Ending because no emails were found");
     return;
   }
 
@@ -86,8 +110,13 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
     emailIdMap.set(e, emailId);
   }
 
-  // TODO: pass emails back to another js extern function to replace within the document
-  // TODO: upload the replaced document and delete the original
+  let compliantFileStr = FileParseService.getCompliantDoc(fileStr, emailIdMap.copy());
+  let modifiedKey = getModifiedKeyFromOriginalKey(key);
+
+  docBucket.put(modifiedKey, compliantFileStr);
+  log("Successfully uploaded GDPR-compliant file to ${modifiedKey}");
+  docBucket.delete(key);
+  log("Successfully deleted non-compliant file from ${key}");
 });
 
 api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
