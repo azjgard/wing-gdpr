@@ -29,14 +29,21 @@ let getModifiedKeyFromOriginalKey = inflight (key: str): str => {
 
 inflight class FileParseService {
   extern "./js/lib.js" static inflight extractEmails(file: str): Array<str>;
+  extern "./js/lib.js" static inflight extractGdprIds(file: str): Array<num>;
   extern "./js/lib.js" static inflight getCompliantDoc(file: str, emailToIdMap: Map<num>): str;
-  // TODO: implement extractIds function for the GET /doc/{id} endpoint
   // TODO: implement replaceIds function for the GET /doc/{id} endpoint
 } 
 
 test "FileParseService -> extractEmails" {
   let result = FileParseService.extractEmails("This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org.");
   let expected = ["gard.jordin@gmail.com","abc@def.org"];
+  assert(result.at(0) == expected.at(0));
+  assert(result.at(1) == expected.at(1));
+}
+
+test "FileParseService -> extractGdprIds" {
+  let result = FileParseService.extractGdprIds("This is a string with an id: 1@gdpr. It actually has two: 2@gdpr.");
+  let expected = [1, 2];
   assert(result.at(0) == expected.at(0));
   assert(result.at(1) == expected.at(1));
 }
@@ -149,8 +156,8 @@ api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => 
 
   let keyModified = getModifiedKey(id);
 
-  let docModified = docBucket.tryGet(keyModified);
-  if !docModified? {
+  let maybeDocModified = docBucket.tryGet(keyModified);
+  if !maybeDocModified? {
     let keyOriginal = getOriginalKey(id);
     let docOriginal = docBucket.tryGet(keyOriginal);
     if !docOriginal? {
@@ -165,14 +172,19 @@ api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => 
     };
   }
 
+  if let docModified = maybeDocModified {
+    let ids = FileParseService.extractGdprIds(docModified);
+
+    // TODO: get emails from table
+    // TODO: replace ids with emails in document and return
+
+    return cloud.ApiResponse {
+      status: 200,
+      body: "Not implemented yet"
+    };
+  }
 
 
-  // TODO: extract ids from modified document
-  // TODO: get emails from table
-  // TODO: replace ids with emails in document
 
-  return cloud.ApiResponse {
-    status: 200,
-    body: "Not implemented yet"
-  };
+
 });
