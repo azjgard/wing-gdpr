@@ -26,7 +26,7 @@ let getModifiedKey = inflight (key: str): str => {
 };
 
 let getModifiedKeyFromOriginalKey = inflight (key: str): str => {
-  let rawKey = key.split("/").at(1);
+  let rawKey = key.split("/").at(1).split(".").at(0);
   return getModifiedKey(rawKey);
 };
 
