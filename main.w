@@ -1,14 +1,11 @@
 bring cloud;
 
-// WIP
-// Nearly all of this is a stub
-
 let api = new cloud.Api();
 let docBucket = new cloud.Bucket() as "gdpr_docs";
 let emailIdGenerator = new cloud.Counter();
 let emailsTable = new cloud.Table(
   name: "email",
-  primaryKey: "id", // corresponds to the id of a document
+  primaryKey: "id", 
   columns: {
     "emailId" => cloud.ColumnType.NUMBER
   }
