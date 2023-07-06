@@ -27,12 +27,6 @@ let getModifiedKeyFromOriginalKey = inflight (key: str): str => {
   return getModifiedKey(rawKey);
 };
 
-struct ParsedEmail {
-  email: str;
-  emailId: num;
-}
-
-
 inflight class FileParseService {
   extern "./js/lib.js" static inflight extractEmails(file: str): Array<str>;
   extern "./js/lib.js" static inflight getCompliantDoc(file: str, emailToIdMap: Map<num>): str;
@@ -93,8 +87,6 @@ test "ensureEmailId: returns existing ids for existing emails" {
   assert(emailId2 == emailId3);
 }
 
-
-
 /**
   Allow users to upload files, which are put into an S3 bucket
 */
@@ -154,14 +146,26 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
 
 api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
   let id = request.vars.get("id");
-  let modifiedKey = getModifiedKey(id);
-  let modifiedDoc = docBucket.get(modifiedKey);
-  if modifiedDoc == "" {
+
+  let keyModified = getModifiedKey(id);
+
+  let docModified = docBucket.tryGet(keyModified);
+  if !docModified? {
+    let keyOriginal = getOriginalKey(id);
+    let docOriginal = docBucket.tryGet(keyOriginal);
+    if !docOriginal? {
+      return cloud.ApiResponse {
+        status: 404,
+        body: "Doc not found"
+      };
+    }
     return cloud.ApiResponse {
       status: 200,
-      body: docBucket.get(getOriginalKey(id))
+      body: docOriginal
     };
   }
+
+
 
   // TODO: extract ids from modified document
   // TODO: get emails from table
