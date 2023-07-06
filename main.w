@@ -176,6 +176,9 @@ api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => 
     let ids = FileParseService.extractGdprIds(docModified);
 
     // TODO: get emails from table
+    // NOTE: going to need to change my current approach -- need two tables: one for email->id, one for id->email
+    // Thoughts: https://winglang.slack.com/archives/C048QCN2XLJ/p1688625591325389?thread_ts=1688597325.876739&cid=C048QCN2XLJ
+
     // TODO: replace ids with emails in document and return
 
     return cloud.ApiResponse {
