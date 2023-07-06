@@ -60,6 +60,42 @@ test "FileParseService -> replaceDocEmails" {
 }
 
 /**
+  Given an email address:
+  - checks to see if it's already stored in the emails table
+    - if so, returns its id 
+    - if not, generates an id, stores it in the emails table, and returns its id
+*/
+let ensureEmailId = inflight (email: str): num => {
+  let maybeEmailId = emailsTable.get(email).tryGet("emailId")?.tryAsNum();
+  if let emailId = maybeEmailId {
+    return emailId;
+  }
+
+  let emailId = emailIdGenerator.inc();
+  emailsTable.insert(email, Json { emailId: emailId });
+  return emailId;
+};
+
+test "ensureEmailId: generates novel ids for novel emails" {
+  let emailId1 = ensureEmailId("gard.jordin@gmail.com");
+  let emailId2 = ensureEmailId("abc@def.com");
+  let emailId3 = ensureEmailId("123@pbs.org");
+  assert(emailId1 != emailId2);
+  assert(emailId2 != emailId3);
+  assert(emailId1 != emailId2);
+}
+
+test "ensureEmailId: returns existing ids for existing emails" {
+  let emailId1 = ensureEmailId("gard.jordin@gmail.com");
+  let emailId2 = ensureEmailId("gard.jordin@gmail.com");
+  let emailId3 = ensureEmailId("gard.jordin@gmail.com");
+  assert(emailId1 == emailId2);
+  assert(emailId2 == emailId3);
+}
+
+
+
+/**
   Allow users to upload files, which are put into an S3 bucket
 */
 api.post("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
@@ -104,11 +140,7 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
 
   let emailIdMap = MutMap<num>{};
   for e in emails {
-    // TODO: need to check for existing emails instead of always assuming that discovered emails
-    // are novel
-    let emailId = emailIdGenerator.inc();
-    emailsTable.insert(e, Json { emailId: emailId });
-    emailIdMap.set(e, emailId);
+    emailIdMap.set(e, ensureEmailId(e));
   }
 
   let compliantFileStr = FileParseService.getCompliantDoc(fileStr, emailIdMap.copy());
