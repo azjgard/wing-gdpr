@@ -39,6 +39,8 @@ struct ParsedEmail {
 inflight class FileParseService {
   extern "./js/lib.js" static inflight extractEmails(file: str): Array<str>;
   extern "./js/lib.js" static inflight getCompliantDoc(file: str, emailToIdMap: Map<num>): str;
+  // TODO: implement extractIds function for the GET /doc/{id} endpoint
+  // TODO: implement replaceIds function for the GET /doc/{id} endpoint
 } 
 
 test "FileParseService -> extractEmails" {
@@ -105,6 +107,8 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
 
   let emailIdMap = MutMap<num>{};
   for e in emails {
+    // TODO: need to check for existing emails instead of always assuming that discovered emails
+    // are novel
     let emailId = emailIdGenerator.inc();
     emailsTable.insert(e, Json { emailId: emailId });
     emailIdMap.set(e, emailId);
@@ -120,12 +124,22 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
 });
 
 api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => {
-  // TODO: 
-  // - lookup document: check for /modified version first, and if not exists, return /origin
-  // - if modified, restore emails 
-  // - return doc
+  let id = request.vars.get("id");
+  let modifiedKey = getModifiedKey(id);
+  let modifiedDoc = docBucket.get(modifiedKey);
+  if modifiedDoc == "" {
+    return cloud.ApiResponse {
+      status: 200,
+      body: docBucket.get(getOriginalKey(id))
+    };
+  }
+
+  // TODO: extract ids from modified document
+  // TODO: get emails from table
+  // TODO: replace ids with emails in document
+
   return cloud.ApiResponse {
     status: 200,
-    body: Json.stringify({})
+    body: "Not implemented yet"
   };
 });
