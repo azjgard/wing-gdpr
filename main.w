@@ -3,11 +3,13 @@ bring cloud;
 let api = new cloud.Api();
 let docBucket = new cloud.Bucket() as "gdpr_docs";
 let emailIdGenerator = new cloud.Counter();
+
 let emailsTable = new cloud.Table(
   name: "email",
   primaryKey: "id", 
   columns: {
-    "emailId" => cloud.ColumnType.NUMBER
+    "emailId" => cloud.ColumnType.NUMBER,
+    "email" => cloud.ColumnType.STRING 
   }
 );
 
@@ -27,11 +29,20 @@ let getModifiedKeyFromOriginalKey = inflight (key: str): str => {
   return getModifiedKey(rawKey);
 };
 
+let getEmailDataByEmailKey = inflight (email: str): str => {
+  return "by_email:${email}";
+};
+
+let getEmailDataByIdKey = inflight (emailId: num): str => {
+  return "by_id:${emailId}";
+};
+
+
 inflight class FileParseService {
   extern "./js/lib.js" static inflight extractEmails(file: str): Array<str>;
   extern "./js/lib.js" static inflight extractGdprIds(file: str): Array<num>;
-  extern "./js/lib.js" static inflight getCompliantDoc(file: str, emailToIdMap: Map<num>): str;
-  // TODO: implement replaceIds function for the GET /doc/{id} endpoint
+  extern "./js/lib.js" static inflight generateCompliantDoc(file: str, emailToIdMap: Map<num>): str;
+  extern "./js/lib.js" static inflight generateOriginalDoc(file: str, idToEmailMap: Map<str>): str;
 } 
 
 test "FileParseService -> extractEmails" {
@@ -48,8 +59,8 @@ test "FileParseService -> extractGdprIds" {
   assert(result.at(1) == expected.at(1));
 }
 
-test "FileParseService -> replaceDocEmails" {
-  let result = FileParseService.getCompliantDoc(
+test "FileParseService -> generateCompliantDoc" {
+  let result = FileParseService.generateCompliantDoc(
     "This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org.", 
     Map<num>{
       "gard.jordin@gmail.com" => 1,
@@ -60,6 +71,19 @@ test "FileParseService -> replaceDocEmails" {
   assert(result == "This is a string with an email: 1@gdpr. It actually has two: 2@gdpr.");
 }
 
+test "FileParseService -> generateOriginalDoc" {
+  log("generating original doc in a sec");
+  let result = FileParseService.generateOriginalDoc(
+    "This is a string with an email: 1@gdpr. It actually has two: 2@gdpr.", 
+    Map<str>{
+      "1" => "gard.jordin@gmail.com",
+      "2" => "abc@def.org"
+    }
+  );
+
+  assert(result == "This is a string with an email: gard.jordin@gmail.com. It actually has two: abc@def.org.");
+}
+
 /**
   Given an email address:
   - checks to see if it's already stored in the emails table
@@ -67,13 +91,14 @@ test "FileParseService -> replaceDocEmails" {
     - if not, generates an id, stores it in the emails table, and returns its id
 */
 let ensureEmailId = inflight (email: str): num => {
-  let maybeEmailId = emailsTable.get(email).tryGet("emailId")?.tryAsNum();
+  let maybeEmailId = emailsTable.get(getEmailDataByEmailKey(email)).tryGet("emailId")?.tryAsNum();
   if let emailId = maybeEmailId {
     return emailId;
   }
 
   let emailId = emailIdGenerator.inc();
-  emailsTable.insert(email, Json { emailId: emailId });
+  emailsTable.insert(getEmailDataByEmailKey(email), Json { email: email, emailId: emailId });
+  emailsTable.insert(getEmailDataByIdKey(emailId), Json { email: email, emailId: emailId });
   return emailId;
 };
 
@@ -142,11 +167,12 @@ docBucket.onCreate(inflight (key: str, type: cloud.BucketEventType): void => {
     emailIdMap.set(e, ensureEmailId(e));
   }
 
-  let compliantFileStr = FileParseService.getCompliantDoc(fileStr, emailIdMap.copy());
+  let compliantFileStr = FileParseService.generateCompliantDoc(fileStr, emailIdMap.copy());
   let modifiedKey = getModifiedKeyFromOriginalKey(key);
 
   docBucket.put(modifiedKey, compliantFileStr);
   log("Successfully uploaded GDPR-compliant file to ${modifiedKey}");
+
   docBucket.delete(key);
   log("Successfully deleted non-compliant file from ${key}");
 });
@@ -175,19 +201,17 @@ api.get("/doc/{id}", inflight (request: cloud.ApiRequest): cloud.ApiResponse => 
   if let docModified = maybeDocModified {
     let ids = FileParseService.extractGdprIds(docModified);
 
-    // TODO: get emails from table
-    // NOTE: going to need to change my current approach -- need two tables: one for email->id, one for id->email
-    // Thoughts: https://winglang.slack.com/archives/C048QCN2XLJ/p1688625591325389?thread_ts=1688597325.876739&cid=C048QCN2XLJ
-
-    // TODO: replace ids with emails in document and return
+    let idToEmailMap = MutMap<str>{};
+    for i in ids {
+      let maybeEmail = emailsTable.get(getEmailDataByIdKey(i)).tryGet("email")?.tryAsStr();
+      if let email = maybeEmail {
+        idToEmailMap.set("${i}", email);
+      }
+    }
 
     return cloud.ApiResponse {
       status: 200,
-      body: "Not implemented yet"
+      body: FileParseService.generateOriginalDoc(docModified, idToEmailMap.copy())
     };
   }
-
-
-
-
 });
